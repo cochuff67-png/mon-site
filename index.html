@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Super Arena Multi</title>
+    <style>
+        body { margin: 0; background: #1a1a2e; color: white; font-family: sans-serif; overflow: hidden; touch-action: none; }
+        #menu { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 10; background: rgba(22, 22, 59, 0.9); padding: 30px; border-radius: 15px; border: 2px solid #4e4eff; }
+        input { padding: 10px; border-radius: 5px; border: none; margin-bottom: 10px; width: 80%; }
+        button { padding: 10px 20px; background: #4e4eff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        canvas { display: block; width: 100vw; height: 100vh; }
+        /* Joystick pour mobile */
+        #joystick { position: absolute; bottom: 50px; left: 50px; width: 100px; height: 100px; background: rgba(255,255,255,0.1); border-radius: 50%; display: none; border: 2px solid rgba(255,255,255,0.3); }
+        #knob { position: absolute; top: 25px; left: 25px; width: 50px; height: 50px; background: #4e4eff; border-radius: 50%; }
+    </style>
+</head>
+<body>
+
+    <div id="menu">
+        <h1>ARENA MULTI</h1>
+        <input type="text" id="username" placeholder="Ton Pseudo..." maxlength="10"><br>
+        <button onclick="startGame()">REJOINDRE</button>
+    </div>
+
+    <div id="joystick"><div id="knob"></div></div>
+    <canvas id="game"></canvas>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        let players = {}, walls = [], myId = null;
+        let gameActive = false;
+
+        function startGame() {
+            const name = document.getElementById('username').value;
+            socket.emit('joinGame', name);
+            document.getElementById('menu').style.display = 'none';
+            if ('ontouchstart' in window) document.getElementById('joystick').style.display = 'block';
+            gameActive = true;
+            myId = socket.id;
+        }
+
+        socket.on('init', data => { walls = data.walls; players = data.players; });
+        socket.on('updatePlayers', data => { players = data; });
+
+        function draw() {
+            ctx.fillStyle = '#16213e'; // Couleur de fond
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Dessin du sol (grillage)
+            ctx.strokeStyle = '#0f3460';
+            for(let i=0; i<canvas.width; i+=40) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,canvas.height); ctx.stroke(); }
+            for(let i=0; i<canvas.height; i+=40) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(canvas.width,i); ctx.stroke(); }
+
+            // Dessin des murs
+            ctx.fillStyle = '#e94560';
+            walls.forEach(w => {
+                ctx.shadowBlur = 15; ctx.shadowColor = '#e94560';
+                ctx.fillRect(w.x, w.y, w.width, w.height);
+            });
+            ctx.shadowBlur = 0;
+
+            // Dessin des joueurs
+            for(let id in players) {
+                const p = players[id];
+                // Corps (Rond)
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 15, 0, Math.PI*2);
+                ctx.fill();
+                
+                // Pseudo
+                ctx.fillStyle = "white";
+                ctx.font = "bold 12px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText(p.name, p.x, p.y - 25);
+            }
+            requestAnimationFrame(draw);
+        }
+
+        // --- Système de mouvement ---
+        const move = { x: 0, y: 0 };
+        window.addEventListener('keydown', e => {
+            if(!gameActive) return;
+            if(e.key === 'ArrowUp') move.y = -5;
+            if(e.key === 'ArrowDown') move.y = 5;
+            if(e.key === 'ArrowLeft') move.x = -5;
+            if(e.key === 'ArrowRight') move.x = 5;
+            socket.emit('move', move);
+        });
+
+        // Joystick Tactile Simple
+        const knob = document.getElementById('knob');
+        canvas.addEventListener('touchmove', e => {
+            const touch = e.touches[0];
+            const dx = touch.clientX - 100; // Position approx du joystick
+            const dy = touch.clientY - (window.innerHeight - 100);
+            socket.emit('move', { x: dx/10, y: dy/10 });
+        });
+
+        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+        canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+        draw();
+    </script>
+</body>
+</html>
